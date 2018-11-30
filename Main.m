@@ -2,7 +2,7 @@ yalmip('clear');
 clear all
 clc
 
-SampleTime = 120; % (secs)
+SampleTime = 60*5; % (secs)
 n = 7.291e-5; % (rad/sec)
 m = 150;
 
@@ -16,9 +16,9 @@ A = [0,     0,      0,      1,      0,      0;
  B = [0 0 0;
       0 0 0;
       0 0 0;
-      1/m 0 0;
-      0 1/m 0;
-      0 0 1/m];
+      1 0 0;
+      0 1 0;
+      0 0 1];
  
 C = [1, 1,  1,  1,  1,  1];
  
@@ -38,11 +38,11 @@ nu = 6; % number of control inputs
 % Define decision variables
 u = sdpvar(nu,T-1); % state decision variables
 x = sdpvar(nx,T); % control decision variables
-h = binvar(T-1,3); % 5 integer decision variables
+h = binvar(T-1,4); % 5 integer decision variables
 
-Mp = 10*1000;
+Mp = 1*1000;
 Mv = 1*1000;
-Mu = 1*1000;
+Mu = 1*100;
 
 Sx = [Mp   0       0       0       0       0;
       0      Mp    0       0       0       0;
@@ -51,15 +51,20 @@ Sx = [Mp   0       0       0       0       0;
       0      0     0       0       Mv      0;
       0      0     0       0       0       Mv];
   
-Su = [Mu     0       0;
-      0      Mu      0;
-      0      0       Mu];
+Su = [1/Mu     0       0;
+      0      1/Mu      0;
+      0      0       1/Mu];
  
 
 
 xw(1:6,1) = [500;500;500;0;0;0];
-xw(1:6,2) = [-500;-500;-500;0;0;0];
-xw(1:6,3) = [500;500;-500;0;0;0];
+xw(1:6,2) = [500;500;-500;0;0;0];
+xw(1:6,3) = [-500;-500;-500;0;0;0];
+xw(1:6,4) = [-500;-500;500;0;0;0];
+xw(1:6,5) = [500;-500;500;0;0;0];
+xw(1:6,6) = [-500;500;-500;0;0;0];
+xw(1:6,7) = [500;-500;-500;0;0;0];
+xw(1:6,8) = [-500;500;500;0;0;0];
     
 constraints = [x(1,1) == 0
                x(2,1) == 0
@@ -75,30 +80,40 @@ constraints = [x(1,1) == 0
                x(6,T) == 0];
            
 
-constraints = [constraints, -Mp <= x(1:3,:) <= Mp];
-constraints = [constraints, -Mv <= x(4:6,:) <= Mv];
-constraints = [constraints, u(1:6,:) >= 0];
+constraints = [constraints, -1 <= x(1:3,:) <= 1];
+constraints = [constraints, -1 <= x(4:6,:) <= 1];
+constraints = [constraints, 0 <= u(1:6,:) <= 1];
 
 for i = 1:T-1
     
-    constraints = [constraints, x(1:6,i+1) == A*x(1:6,i) + B*u(1:3,i) - B*u(4:6,i)];
+    constraints = [constraints, Sx*x(1:6,i+1) == A*(Sx*x(1:6,i)) + B*(Su*u(1:3,i)) - B*(Su*u(4:6,i))];
              
     constraints = [constraints
-                   implies(h(i,1), x(1:6,i) == xw(1:6,1))
-                   implies(h(i,2), x(1:6,i) == xw(1:6,2))
-                   implies(h(i,3), x(1:6,i) == xw(1:6,3))];
+                   implies(h(i,1), Sx*x(1:6,i) == xw(1:6,1))
+                   implies(h(i,2), Sx*x(1:6,i) == xw(1:6,2))
+                   implies(h(i,3), Sx*x(1:6,i) == xw(1:6,3))
+                   implies(h(i,4), Sx*x(1:6,i) == xw(1:6,4))];
+%                    implies(h(i,5), Sx*x(1:6,i) == xw(1:6,5))
+%                    implies(h(i,6), Sx*x(1:6,i) == xw(1:6,6))
+%                    implies(h(i,7), Sx*x(1:6,i) == xw(1:6,7))
+%                    implies(h(i,8), Sx*x(1:6,i) == xw(1:6,8))];
 
     constraints = [constraints, sum(h(i,:)) <= 1];
+    
                                    
 end
 
-constraints = [constraints, sum(h(:,1)) >= 1];
-constraints = [constraints, sum(h(:,2)) >= 1];
-constraints = [constraints, sum(h(:,3)) >= 1];
+constraints = [constraints, sum(h(:,1)) >= 5];
+constraints = [constraints, sum(h(:,2)) >= 5];
+constraints = [constraints, sum(h(:,3)) >= 5];
+constraints = [constraints, sum(h(:,4)) >= 5];
+% constraints = [constraints, sum(h(:,5)) >= 1];
+% constraints = [constraints, sum(h(:,6)) >= 1];
+% constraints = [constraints, sum(h(:,7)) >= 1];
+% constraints = [constraints, sum(h(:,8)) >= 1];
 
 objective = sum(sum(u,2));
-
-options = sdpsettings('solver','cplex','cplex.emphasis.mip',1,'cplex.mip.tolerances.mipgap',0.05);
+options = sdpsettings('solver','scip');
 optimize(constraints,objective,options)
 
 %% Plot solution
@@ -113,7 +128,7 @@ for i = 1:T-1
 end
 
 figure(1)
-scatter3(sol(2,:),sol(1,:),sol(3,:))
+plot3(sol(2,:),sol(1,:),sol(3,:),'-o')
 
 figure(2)
 plot(1:T,sol(1,:),1:T,sol(2,:))
